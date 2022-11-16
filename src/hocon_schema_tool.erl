@@ -44,10 +44,15 @@ die(Fmt, Args) ->
   erlang:halt(1).
 
 diff_fields(FieldsA, FieldsB) ->
-  diff_maps(fun(A, A) ->
-                same;
-               (A, B) ->
-                {A, B}
+  diff_maps(fun(A, B) ->
+                case diff_maps(A, B) of
+                  #{changed := [], new := [], removed := []} ->
+                    same;
+                  #{changed := C, new := N, removed := R} ->
+                    ChangedKeys = [K || {K, _} <- C],
+                    {maps:with(R ++ ChangedKeys, A),
+                     maps:with(N ++ ChangedKeys, B)}
+                end
             end,
             fields(FieldsA),
             fields(FieldsB)).
@@ -65,11 +70,7 @@ diff_records(RecA, RecB) ->
             records(RecB)).
 
 diff_paths(RecA, RecB) ->
-  diff_maps(fun(A, A) -> same;
-               (A, B) -> {A, B}
-            end,
-            paths(RecA),
-            paths(RecB)).
+  diff_maps(paths(RecA), paths(RecB)).
 
 paths(Records) ->
   maps:from_list([{Path, Rec} || #{full_name := Rec, paths := Paths} <- Records, Path <- Paths]).
@@ -78,7 +79,16 @@ records(Records) ->
   maps:from_list([{Name, Fields} || #{full_name := Name, fields := Fields} <- Records]).
 
 fields(Fields) ->
-  maps:from_list([{Name, maps:without([desc], Field)} || Field = #{name := Name} <- Fields]).
+  maps:from_list([{Name, maps:without([name, desc], Field)} || Field = #{name := Name} <- Fields]).
+
+diff_maps(MA, MB) ->
+  diff_maps(fun(A, A) ->
+                same;
+               (A, B) ->
+                {A, B}
+            end,
+            MA,
+            MB).
 
 diff_maps(DiffFun, A, B) ->
   NewKeys = maps:keys(B) -- maps:keys(A),
